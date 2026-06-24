@@ -1,47 +1,35 @@
-/* ── app.js — BFHL Hierarchy Explorer ────────────────────────────────────── */
+/* ── app.js — BFHL Node Analyser ── */
 
-const API_URL = "/bfhl"; // relative → same server; change to full URL after deploy
+const API_URL = "/bfhl";
 
-// ── Quick example presets ──────────────────────────────────────────────────
 const EXAMPLES = {
   tree: "A->B, A->C, B->D, C->E, E->F",
   cycle: "X->Y, Y->Z, Z->X, P->Q, Q->R",
-  full: [
-    "A->B", "A->C", "B->D", "C->E", "E->F",
-    "X->Y", "Y->Z", "Z->X",
-    "P->Q", "Q->R",
-    "G->H", "G->H", "G->I",
-    "hello", "1->2", "A->",
-  ].join(", "),
+  full: "A->B, A->C, B->D, C->E, E->F, X->Y, Y->Z, Z->X, P->Q, Q->R, G->H, G->H, G->I, hello, 1->2, A->",
 };
 
 function loadExample(key) {
   document.getElementById("node-input").value = EXAMPLES[key];
-  document.getElementById("node-input").focus();
 }
 
-// Ctrl+Enter to submit
+// Ctrl+Enter shortcut
 document.getElementById("node-input").addEventListener("keydown", (e) => {
   if (e.ctrlKey && e.key === "Enter") submitNodes();
 });
 
-// ── Submit Handler ─────────────────────────────────────────────────────────
 async function submitNodes() {
   const raw = document.getElementById("node-input").value.trim();
-  if (!raw) {
-    showError("Please enter at least one node pair.");
-    return;
-  }
+  if (!raw) { showError("Please enter at least one node pair."); return; }
 
-  // Parse comma/newline separated entries
-  const data = raw
-    .split(/[\n,]+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+  const data = raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
 
-  const btn = document.getElementById("submit-btn");
-  btn.classList.add("loading");
+  const btn  = document.getElementById("submit-btn");
+  const txt  = document.getElementById("btn-text");
+  const ldr  = document.getElementById("btn-loader");
+
   btn.disabled = true;
+  txt.textContent = "Analysing...";
+  ldr.style.display = "inline-block";
 
   try {
     const res = await fetch(API_URL, {
@@ -49,316 +37,204 @@ async function submitNodes() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ data }),
     });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`API returned ${res.status}: ${errText}`);
-    }
-
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
     const json = await res.json();
     renderResults(json);
   } catch (err) {
-    showError(err.message || "Failed to reach the API. Make sure the server is running.");
+    showError(err.message || "Could not connect to the API.");
   } finally {
-    btn.classList.remove("loading");
     btn.disabled = false;
+    txt.textContent = "Analyse";
+    ldr.style.display = "none";
   }
 }
 
-// ── Render Results ─────────────────────────────────────────────────────────
+/* ── Render ── */
 function renderResults(data) {
-  const section = document.getElementById("results-section");
-  section.innerHTML = "";
+  const area = document.getElementById("results-area");
+  area.innerHTML = "";
 
-  const container = document.createElement("div");
-  container.className = "results-content";
+  const grid = el("div", "results-grid");
 
-  // 1) Identity strip
-  container.appendChild(
-    makeIdentityStrip(data.user_id, data.email_id, data.college_roll_number)
-  );
+  // Identity
+  grid.appendChild(makeIdentity(data));
 
-  // 2) Summary row
-  container.appendChild(makeSummaryRow(data.summary));
+  // Summary
+  grid.appendChild(makeSummary(data.summary || {}));
 
-  // 3) Hierarchies
-  if (data.hierarchies && data.hierarchies.length > 0) {
-    const label = makeLabel("Hierarchies");
-    const grid = document.createElement("div");
-    grid.className = "hierarchies-grid";
-    data.hierarchies.forEach((h, i) => grid.appendChild(makeHierarchyCard(h, i)));
-    container.appendChild(label);
-    container.appendChild(grid);
+  // Hierarchies
+  if (data.hierarchies?.length) {
+    const wrap = el("div", "card");
+    wrap.appendChild(elText("div", "section-title", "Hierarchies"));
+    const list = el("div", "");
+    list.style.display = "flex";
+    list.style.flexDirection = "column";
+    list.style.gap = "10px";
+    data.hierarchies.forEach((h, i) => list.appendChild(makeHCard(h, i)));
+    wrap.appendChild(list);
+    grid.appendChild(wrap);
   }
 
-  // 4) Invalid entries
-  {
-    const label = makeLabel("Invalid Entries");
-    const tags = makeTagsBlock(data.invalid_entries || [], "invalid", "✗");
-    container.appendChild(label);
-    container.appendChild(tags);
-  }
+  // Invalid
+  grid.appendChild(makeTagsCard("Invalid Entries", data.invalid_entries || [], "inv"));
 
-  // 5) Duplicate edges
-  {
-    const label = makeLabel("Duplicate Edges");
-    const tags = makeTagsBlock(data.duplicate_edges || [], "duplicate", "⟳");
-    container.appendChild(label);
-    container.appendChild(tags);
-  }
+  // Duplicates
+  grid.appendChild(makeTagsCard("Duplicate Edges", data.duplicate_edges || [], "dup"));
 
-  // 6) Raw JSON toggle
-  container.appendChild(makeRawToggle(data));
+  // Raw JSON
+  grid.appendChild(makeRaw(data));
 
-  section.appendChild(container);
+  area.appendChild(grid);
 }
 
-// ── Identity Strip ─────────────────────────────────────────────────────────
-function makeIdentityStrip(userId, email, roll) {
-  const strip = document.createElement("div");
-  strip.className = "identity-strip";
-  strip.innerHTML = `
-    <div class="identity-item">
-      <span class="identity-label">User ID</span>
-      <span class="identity-value">${esc(userId)}</span>
-    </div>
-    <div class="identity-item">
-      <span class="identity-label">Email</span>
-      <span class="identity-value">${esc(email)}</span>
-    </div>
-    <div class="identity-item">
-      <span class="identity-label">Roll Number</span>
-      <span class="identity-value">${esc(roll)}</span>
-    </div>
+function makeIdentity(data) {
+  const d = el("div", "identity-card");
+  d.innerHTML = `
+    <div class="id-item"><span class="id-label">User ID</span><span class="id-value">${esc(data.user_id)}</span></div>
+    <div class="id-item"><span class="id-label">Email</span><span class="id-value">${esc(data.email_id)}</span></div>
+    <div class="id-item"><span class="id-label">Roll No.</span><span class="id-value">${esc(data.college_roll_number)}</span></div>
   `;
-  return strip;
+  return d;
 }
 
-// ── Summary Row ────────────────────────────────────────────────────────────
-function makeSummaryRow(summary = {}) {
-  const row = document.createElement("div");
-  row.className = "summary-row";
-  row.innerHTML = `
-    <div class="summary-card">
-      <div class="summary-num trees">${summary.total_trees ?? 0}</div>
-      <div class="summary-label">Total Trees</div>
-    </div>
-    <div class="summary-card">
-      <div class="summary-num cycles">${summary.total_cycles ?? 0}</div>
-      <div class="summary-label">Cyclic Groups</div>
-    </div>
-    <div class="summary-card">
-      <div class="summary-num root">${esc(summary.largest_tree_root ?? "—")}</div>
-      <div class="summary-label">Largest Tree Root</div>
-    </div>
+function makeSummary(s) {
+  const d = el("div", "summary-row");
+  d.innerHTML = `
+    <div class="sum-card"><div class="sum-num t">${s.total_trees ?? 0}</div><div class="sum-label">Trees</div></div>
+    <div class="sum-card"><div class="sum-num c">${s.total_cycles ?? 0}</div><div class="sum-label">Cycles</div></div>
+    <div class="sum-card"><div class="sum-num r">${esc(s.largest_tree_root ?? "—")}</div><div class="sum-label">Largest Root</div></div>
   `;
-  return row;
+  return d;
 }
 
-// ── Hierarchy Card ─────────────────────────────────────────────────────────
-function makeHierarchyCard(h, index) {
-  const card = document.createElement("div");
-  card.className = "hierarchy-card" + (h.has_cycle ? " cycle-card" : "");
-  card.id = `hierarchy-card-${index}`;
+function makeHCard(h, idx) {
+  const card = el("div", "h-card" + (h.has_cycle ? " is-cycle" : ""));
+  card.id = `hc-${idx}`;
 
-  const header = document.createElement("div");
-  header.className = "hierarchy-header";
-  header.setAttribute("role", "button");
-  header.setAttribute("aria-expanded", "false");
-  header.setAttribute("aria-controls", `hierarchy-body-${index}`);
-  header.tabIndex = 0;
-
-  const metaChips = h.has_cycle
-    ? `<span class="cycle-chip">⚠ Cycle Detected</span>`
-    : `<span class="depth-chip">Depth: ${h.depth}</span>`;
-
-  header.innerHTML = `
-    <div class="hierarchy-root-label">
-      <span class="root-badge">${esc(h.root)}</span>
-      Root: <span>${esc(h.root)}</span>
+  const hdr = el("div", "h-header");
+  hdr.setAttribute("role", "button");
+  hdr.tabIndex = 0;
+  hdr.innerHTML = `
+    <div class="h-root">
+      <span class="root-tag">${esc(h.root)}</span>
+      Root: ${esc(h.root)}
     </div>
-    <div class="hierarchy-meta">
-      ${metaChips}
-      <svg class="expand-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <polyline points="6 9 12 15 18 9"></polyline>
-      </svg>
+    <div class="h-badges">
+      ${h.has_cycle ? `<span class="cycle-tag">⚠ Cycle</span>` : `<span class="depth-tag">depth ${h.depth}</span>`}
+      <span class="chevron">▼</span>
     </div>
   `;
 
-  const body = document.createElement("div");
-  body.className = "hierarchy-body";
-  body.id = `hierarchy-body-${index}`;
+  const body = el("div", "h-body");
 
   if (h.has_cycle) {
-    body.innerHTML = `
-      <p style="color:var(--clr-amber); font-size:13px; display:flex; align-items:center; gap:8px;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="8" x2="12" y2="12"></line>
-          <line x1="12" y1="16" x2="12.01" y2="16"></line>
-        </svg>
-        This group contains a cycle — tree structure cannot be rendered.
-      </p>
-    `;
+    body.innerHTML = `<div class="cycle-msg">⚠ Cycle detected — tree structure cannot be displayed.</div>`;
   } else {
-    const vis = document.createElement("div");
-    vis.className = "tree-visualiser";
-    // h.tree is { root: subtreeObj } — extract the subtree at root
-    const subtree = h.tree[h.root] ?? {};
-    renderTreeRows(vis, h.root, subtree, "", true);
-    body.appendChild(vis);
+    const tv = el("div", "tree-view");
+    buildTreeRows(tv, h.root, h.tree[h.root] ?? {}, "", true);
+    body.appendChild(tv);
   }
 
-  // Toggle expand on click / keyboard
-  const toggleCard = () => {
-    card.classList.toggle("expanded");
-    header.setAttribute("aria-expanded", card.classList.contains("expanded"));
+  const toggle = () => {
+    card.classList.toggle("open");
   };
-  header.addEventListener("click", toggleCard);
-  header.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleCard(); }
-  });
+  hdr.addEventListener("click", toggle);
+  hdr.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") toggle(); });
 
-  // Auto-expand first card
-  if (index === 0) {
-    card.classList.add("expanded");
-    header.setAttribute("aria-expanded", "true");
-  }
+  if (idx === 0) card.classList.add("open");
 
-  card.appendChild(header);
+  card.appendChild(hdr);
   card.appendChild(body);
   return card;
 }
 
-/**
- * Recursively renders tree rows into a container element.
- * @param {HTMLElement} container
- * @param {string} nodeName
- * @param {object} subtree  — children sub-object
- * @param {string} prefix   — connector string built up recursively
- * @param {boolean} isRoot  — whether this is the root node
- */
-function renderTreeRows(container, nodeName, subtree, prefix, isRoot) {
-  const row = document.createElement("div");
-  row.className = "tree-node-row";
+function buildTreeRows(container, name, subtree, prefix, isRoot) {
+  const row = el("div", "tree-row");
+  const pre = el("span", "tree-pre");
+  pre.textContent = isRoot ? "" : prefix;
 
   const children = Object.keys(subtree);
   const isLeaf = children.length === 0;
+  const pill = el("span", "node-pill" + (isRoot ? " root" : isLeaf ? " leaf" : ""));
+  pill.textContent = name;
 
-  let connectorText = "";
-  if (!isRoot) {
-    connectorText = prefix;
-  }
-
-  const connectorSpan = document.createElement("span");
-  connectorSpan.className = "tree-connector";
-  connectorSpan.textContent = connectorText;
-
-  const nameSpan = document.createElement("span");
-  nameSpan.className =
-    "tree-node-name" + (isRoot ? " root-node" : isLeaf ? " leaf" : "");
-  nameSpan.textContent = nodeName;
-
-  row.appendChild(connectorSpan);
-  row.appendChild(nameSpan);
+  row.appendChild(pre);
+  row.appendChild(pill);
   container.appendChild(row);
 
-  children.forEach((child, idx) => {
-    const isLast = idx === children.length - 1;
-    const childPrefix = isRoot
-      ? (isLast ? "└── " : "├── ")
-      : prefix.replace(/[├└]── $/, isLast ? "    " : "│   ") + (isLast ? "└── " : "├── ");
-    renderTreeRows(container, child, subtree[child], childPrefix, false);
+  children.forEach((child, i) => {
+    const last = i === children.length - 1;
+    let childPre;
+    if (isRoot) {
+      childPre = last ? "└── " : "├── ";
+    } else {
+      const base = prefix.replace(/[├└]── $/, last ? "    " : "│   ");
+      childPre = base + (last ? "└── " : "├── ");
+    }
+    buildTreeRows(container, child, subtree[child], childPre, false);
   });
 }
 
-// ── Tags Block ─────────────────────────────────────────────────────────────
-function makeTagsBlock(items, cls, icon) {
-  const wrap = document.createElement("div");
-  wrap.className = "tags-wrap";
-  if (!items || items.length === 0) {
-    wrap.innerHTML = `<span class="tag-empty">None</span>`;
+function makeTagsCard(title, items, cls) {
+  const card = el("div", "card");
+  card.appendChild(elText("div", "section-title", title));
+  const wrap = el("div", "tags-wrap");
+  if (!items.length) {
+    wrap.appendChild(elText("span", "empty-text", "None"));
   } else {
-    items.forEach((item) => {
-      const tag = document.createElement("span");
-      tag.className = `tag ${cls}`;
-      tag.textContent = `${icon} ${item}`;
-      wrap.appendChild(tag);
+    items.forEach(item => {
+      const t = elText("span", `tag ${cls}`, item);
+      wrap.appendChild(t);
     });
   }
-  return wrap;
+  card.appendChild(wrap);
+  return card;
 }
 
-// ── Label ──────────────────────────────────────────────────────────────────
-function makeLabel(text) {
-  const el = document.createElement("div");
-  el.className = "results-label";
-  el.textContent = text;
-  return el;
-}
-
-// ── Raw JSON Toggle ────────────────────────────────────────────────────────
-function makeRawToggle(data) {
-  const wrapper = document.createElement("div");
-
-  const btn = document.createElement("button");
-  btn.className = "raw-toggle-btn";
-  btn.id = "raw-toggle-btn";
-  btn.innerHTML = `
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <polyline points="16 18 22 12 16 6"></polyline>
-      <polyline points="8 6 2 12 8 18"></polyline>
-    </svg>
-    View Raw JSON
-  `;
-
-  const block = document.createElement("pre");
-  block.className = "raw-json-block";
+function makeRaw(data) {
+  const wrap = el("div", "card");
+  const btn = elText("button", "raw-toggle", "{ } View Raw JSON Response");
+  const block = el("pre", "raw-block");
   block.style.display = "none";
   block.textContent = JSON.stringify(data, null, 2);
 
   btn.addEventListener("click", () => {
-    const isHidden = block.style.display === "none";
-    block.style.display = isHidden ? "block" : "none";
-    btn.innerHTML = isHidden
-      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-           <polyline points="16 18 22 12 16 6"></polyline>
-           <polyline points="8 6 2 12 8 18"></polyline>
-         </svg> Hide Raw JSON`
-      : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-           <polyline points="16 18 22 12 16 6"></polyline>
-           <polyline points="8 6 2 12 8 18"></polyline>
-         </svg> View Raw JSON`;
+    const hidden = block.style.display === "none";
+    block.style.display = hidden ? "block" : "none";
+    btn.textContent = hidden ? "{ } Hide Raw JSON" : "{ } View Raw JSON Response";
   });
 
-  wrapper.appendChild(btn);
-  wrapper.appendChild(block);
-  return wrapper;
+  wrap.appendChild(btn);
+  wrap.appendChild(block);
+  return wrap;
 }
 
-// ── Error Banner ───────────────────────────────────────────────────────────
-function showError(message) {
-  const section = document.getElementById("results-section");
-  section.innerHTML = `
-    <div class="error-banner" role="alert">
-      <svg class="error-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="10"></circle>
-        <line x1="12" y1="8" x2="12" y2="12"></line>
-        <line x1="12" y1="16" x2="12.01" y2="16"></line>
-      </svg>
-      <div>
-        <strong>Error</strong><br/>
-        <span>${esc(message)}</span>
-      </div>
+function showError(msg) {
+  const area = document.getElementById("results-area");
+  area.innerHTML = `
+    <div class="error-box">
+      <span>✕</span>
+      <div><strong>Error</strong><br/>${esc(msg)}</div>
     </div>
   `;
 }
 
-// ── Utility ────────────────────────────────────────────────────────────────
-function esc(str) {
-  return String(str ?? "")
+/* ── Helpers ── */
+function el(tag, cls) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  return e;
+}
+
+function elText(tag, cls, text) {
+  const e = el(tag, cls);
+  e.textContent = text;
+  return e;
+}
+
+function esc(s) {
+  return String(s ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/>/g, "&gt;");
 }
