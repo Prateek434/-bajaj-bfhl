@@ -1,71 +1,115 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>BFHL Node Analyser</title>
-  <meta name="description" content="Analyse hierarchical node relationships - Chitkara Full Stack Challenge"/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <title>BFHL — Hierarchy Visualiser</title>
+  <meta name="description" content="Node hierarchy analyser for Chitkara Full Stack Engineering Challenge Round 1"/>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
 
-  <div class="page">
+  <!-- Top Nav -->
+  <nav class="navbar">
+    <div class="nav-left">
+      <span class="nav-logo">⬡</span>
+      <span class="nav-brand">BFHL Visualiser</span>
+    </div>
+    <div class="nav-right">
+      <span class="nav-dot"></span>
+      <span class="nav-status">API Connected</span>
+    </div>
+  </nav>
 
-    <!-- Header -->
-    <header class="header">
-      <div class="header-inner">
-        <div class="logo">
-          <div class="logo-box">BF</div>
-          <div>
-            <h1 class="logo-title">BFHL Node Analyser</h1>
-            <p class="logo-sub">Chitkara Full Stack Challenge — Round 1</p>
-          </div>
+  <!-- Hero -->
+  <section class="hero">
+    <p class="hero-tag">Chitkara University · Full Stack Round 1</p>
+    <h1 class="hero-title">Node Hierarchy<br/>Analyser</h1>
+    <p class="hero-desc">Enter parent→child node pairs and instantly visualise tree structures, detect cycles, and analyse relationships.</p>
+  </section>
+
+  <!-- App -->
+  <div class="container">
+
+    <!-- Two column layout -->
+    <div class="layout">
+
+      <!-- Left: Input panel -->
+      <div class="panel input-panel">
+
+        <div class="panel-header">
+          <span class="panel-icon">📥</span>
+          <span class="panel-title">Input Nodes</span>
         </div>
-        <span class="live-badge">● Live</span>
-      </div>
-    </header>
 
-    <!-- Main -->
-    <main class="main">
-
-      <!-- Input Card -->
-      <div class="card">
-        <h2 class="card-title">Enter Node Pairs</h2>
-        <p class="card-desc">Type node pairs like <code>A-&gt;B</code>, separated by commas or new lines.</p>
-
+        <label class="field-label">Node Pairs <span class="label-hint">(format: A-&gt;B)</span></label>
         <textarea
           id="node-input"
           class="textarea"
-          placeholder="e.g.  A->B, A->C, B->D, C->E, E->F"
-          rows="5"
+          rows="8"
+          placeholder="A->B, A->C&#10;B->D, C->E&#10;E->F"
           spellcheck="false"
         ></textarea>
 
-        <div class="examples">
-          <span class="examples-text">Try an example:</span>
-          <button class="ex-btn" onclick="loadExample('tree')">Simple Tree</button>
-          <button class="ex-btn" onclick="loadExample('cycle')">With Cycle</button>
-          <button class="ex-btn" onclick="loadExample('full')">Full Demo</button>
+        <div class="tip-row">
+          <span class="tip">💡 Ctrl+Enter to submit</span>
         </div>
 
-        <button class="submit-btn" id="submit-btn" onclick="submitNodes()">
-          <span id="btn-text">Analyse</span>
-          <span id="btn-loader" class="loader" style="display:none;"></span>
+        <div class="quick-row">
+          <span class="quick-label">Quick load:</span>
+          <button class="qbtn" onclick="loadExample('tree')">Tree</button>
+          <button class="qbtn" onclick="loadExample('cycle')">Cycle</button>
+          <button class="qbtn" onclick="loadExample('full')">Full Demo</button>
+        </div>
+
+        <button class="analyse-btn" id="submit-btn" onclick="submitNodes()">
+          <span id="btn-text">▶ Analyse</span>
+          <span id="btn-loader" class="spinner" style="display:none"></span>
         </button>
+
+        <!-- Info box -->
+        <div class="info-box">
+          <p class="info-title">Valid Format</p>
+          <div class="info-row"><span class="good">✓</span> <code>A-&gt;B</code> — single uppercase letters</div>
+          <div class="info-row"><span class="bad">✗</span> <code>AB-&gt;C</code> — multi-char not allowed</div>
+          <div class="info-row"><span class="bad">✗</span> <code>A-&gt;A</code> — self-loops invalid</div>
+          <div class="info-row"><span class="bad">✗</span> <code>1-&gt;2</code> — numbers not allowed</div>
+        </div>
+
       </div>
 
-      <!-- Results -->
-      <div id="results-area"></div>
+      <!-- Right: Output panel -->
+      <div class="panel output-panel">
 
-    </main>
+        <div class="panel-header">
+          <span class="panel-icon">📊</span>
+          <span class="panel-title">Results</span>
+        </div>
 
-    <!-- Footer -->
-    <footer class="footer">
-      <p>Prateek Malhotra &nbsp;·&nbsp; 2311981388 &nbsp;·&nbsp; Chitkara University</p>
-    </footer>
+        <div id="results-area" class="results-area">
+          <div class="empty-state">
+            <div class="empty-icon">🌿</div>
+            <p class="empty-text">Results will appear here</p>
+            <p class="empty-sub">Enter some node pairs and click Analyse</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
 
   </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <span>Made by <strong>Prateek Malhotra</strong></span>
+      <span class="dot">·</span>
+      <span>Roll: <strong>2311981388</strong></span>
+      <span class="dot">·</span>
+      <span>prateek1388.be23@chitkarauniversity.edu.in</span>
+    </div>
+  </footer>
 
   <script src="app.js"></script>
 </body>
